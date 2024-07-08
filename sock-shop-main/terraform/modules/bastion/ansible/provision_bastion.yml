@@ -1,0 +1,59 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Include variables
+      include_vars: vars.yml
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - unzip
+        state: present
+        update_cache: yes
+
+    - name: Download the AWS CLI v2 bundle
+      get_url:
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+        dest: "/tmp/awscliv2.zip"
+
+    - name: Unarchive the AWS CLI installer
+      unarchive:
+        src: "/tmp/awscliv2.zip"
+        dest: "/tmp/"
+        remote_src: yes
+
+    - name: Install AWS CLI v2
+      shell: "/tmp/aws/install"
+      args:
+        creates: /usr/local/bin/aws
+
+    - name: Verify AWS CLI installation
+      command: aws --version
+
+    - name: Configure AWS CLI
+      shell: "aws configure set {{ item.key }} {{ item.value }} --profile {{ aws_profile }}"
+      loop:
+        - { key: 'aws_access_key_id', value: "{{ aws_access_key }}" }
+        - { key: 'aws_secret_access_key', value: "{{ aws_secret_key }}" }
+        - { key: 'region', value: "{{ aws_region }}" }
+        - { key: 'format', value: "{{ aws_format }}" }
+      no_log: true
+      changed_when: false
+      become_user: ubuntu
+      environment:
+        AWS_PROFILE: "{{ aws_profile }}"
+    
+    - name: Download kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+        dest: "./"
+        mode: '0755'
+
+    - name: Install kubectl
+      shell: install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    
+    - name: Configure EKS
+      shell: "aws eks update-kubeconfig --region {{ region }}  --name {{ cluster_name }}"
+      become_user: ubuntu
+
